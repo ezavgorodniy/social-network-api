@@ -1,30 +1,40 @@
-# Blotato Take Home
+# social-network-api
 
-You are working on a social media scheduling API that supports multiple social platforms.
+A REST API for managing comments across multiple social media platforms, part of
+a social media scheduling product. It provides a unified way to retrieve and
+reply to comments on published posts regardless of the underlying platform.
 
-Design and partially implement a comment system.
+## Features
 
-Requirements:
+- Retrieve comments for a published post
+- Reply to a comment
+- Pluggable support for multiple social platforms (Facebook, with more to come)
+- REST API over a PostgreSQL-backed data model
 
-* Retrieve comments for a published post
-* Reply to a comment
-* Support multiple social platforms
-* Expose the functionality through a REST API
+## Tech stack
 
-Please provide:
+- **NestJS** + TypeScript
+- **PostgreSQL** with **Prisma**
+- **Jest** for unit, integration, and e2e tests
 
-* Database schema
-* API design
-* Relevant TypeScript code
-* Explanation of major design decisions
+## Documentation
 
-The system currently supports multiple social platforms and is expected to support more in the future.
+Architecture, data model, API reference, and design decisions live in
+[`docs/`](./docs) — see [`docs/README.md`](./docs/README.md) and the
+Architecture Decision Records in [`docs/adrs/`](./docs/adrs).
 
-The requirements intentionally leave some details unspecified. Document any assumptions you make.
+## Getting started
 
-This feature already exists in my product. I am not evaluating whether your solution matches my implementation; I am evaluating your reasoning and engineering decisions.
+```bash
+npm install
+cp .env.example .env        # configure DATABASE_URL and platform credentials
+docker compose up -d db     # local PostgreSQL
+npm run prisma:migrate      # apply the schema
+npm run start:dev           # start the API
+```
 
-You may use AI tools if desired.
-If you do, briefly describe how you used them.
+## Testing
 
-Reply to this email with the github repo link.
+```bash
+npm test                    # unit + integration + e2e
+```

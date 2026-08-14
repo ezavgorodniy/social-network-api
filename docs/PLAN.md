@@ -12,8 +12,8 @@
 
 ## Current state
 
-- **Where we are:** planning only. Repo contains `README.md` (the brief),
-  `.gitignore`, and this `docs/PLAN.md`. No implementation code exists yet.
+- **Where we are:** planning only. Repo contains `README.md`, `.gitignore`, and
+  this `docs/PLAN.md`. No implementation code exists yet.
 - **Decisions so far (proposed, evolving):** NestJS + TypeScript, PostgreSQL +
   Prisma, Repository pattern, Adapter/Strategy for platforms (Facebook first,
   others stubbed), OAuth2 bearer auth with a vault-backed token store and a
@@ -26,17 +26,16 @@
 
 ## Context
 
-The README (`README.md`) is a take-home brief: design and **partially implement**
-a comment system for a social-media scheduling API that supports multiple
-platforms. Required capabilities:
+We are building a comment system for a social-media scheduling API that supports
+multiple platforms. Required capabilities:
 
 - Retrieve comments for a published post
 - Reply to a comment
 - Support multiple social platforms
 - Expose functionality through a REST API
 
-Requested deliverables: database schema, API design, relevant TypeScript code,
-and an explanation of major design decisions.
+Deliverables: database schema, API design, TypeScript implementation, and
+documented design decisions.
 
 The repo is currently greenfield (`README.md` + `.gitignore`). This plan builds a
 **core vertical slice**: the two endpoints fully working, backed by
@@ -57,7 +56,7 @@ is only accepted once we agree during implementation.
 | Persistence | PostgreSQL | Relational data (posts, threaded replies), integrity, idempotent-sync uniqueness. **ADR 0003 discusses alternatives: MySQL, MongoDB, key-value stores** |
 | ORM | Prisma | Type-safe client, schema doubles as docs; hidden behind a repository interface |
 | Data access | Repository pattern | Decouple service from Prisma; enables in-memory impl for fast tests |
-| Platform support | Adapter/Strategy | Brief says "multiple platforms"; ADR acknowledges it's arguably over-engineering |
+| Platform support | Adapter/Strategy | System supports multiple platforms; ADR weighs the abstraction cost vs. flexibility |
 | **First real platform** | **Facebook (Graph API)** | Fully implemented; Twitter/X, Instagram, LinkedIn stubbed |
 | **Auth** | **OAuth2 bearer token + auth abstraction** | Real `Authorization: Bearer <token>` calls; `TokenProvider` abstraction per platform |
 | Scope | Core vertical slice | Two endpoints end-to-end, one real adapter, others stubbed |
@@ -125,7 +124,7 @@ implementations through the testing module):
 - The prod-vs-local switch is a single seam (`SecretStore` behind the
   `TokenProvider` factory) so swapping backends needs no adapter/service changes.
 - No secrets are hardcoded; tokens come from the vault (prod) or env (local) only.
-- Full OAuth *authorization-code login UI* is out of scope for the take-home
+- Full OAuth *authorization-code login UI* is out of scope for this iteration
   (we assume a pre-issued/provisioned access token), documented as a non-goal.
 - **ADR 0009** records the decision to store integration tokens in a vault, the
   prod/local provider switch, and alternatives considered (env-only, encrypted
@@ -268,8 +267,8 @@ old one). Each lists the alternatives considered and why the proposed option fit
 - `docs/adding-a-platform.md`: a concrete guide to adding a new social-network
   adapter — implement `PlatformAdapter`, wire a `TokenProvider`, register it,
   extend the `Platform` enum, add tests — with a checklist.
-- ADRs in `docs/adrs/` for the design-decision explanation the brief requires.
-- Root `README.md`: keep the brief; add a short pointer to `docs/`.
+- ADRs in `docs/adrs/` documenting the major design decisions.
+- Root `README.md`: project overview with a short pointer to `docs/`.
 
 ## Implementation TODO (ordered)
 
