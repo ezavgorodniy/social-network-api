@@ -313,6 +313,9 @@ what a production build would add next:
 - **CI/CD hardening (deferred):** SAST + dependency scanning, container image
   build/publish, and deployment pipeline.
 - **AuthZ:** per-tenant/account authorization on posts and comments.
+- **ADR renderer:** tooling to render the `docs/adrs/` Markdown into a browsable
+  index/site (e.g. an auto-generated table of contents with statuses, or a static
+  site via a docs generator) so decisions are easy to browse outside the repo.
 
 ## Verification
 
