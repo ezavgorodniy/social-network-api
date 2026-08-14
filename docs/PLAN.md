@@ -1,5 +1,29 @@
 # Implementation Plan: Multi-Platform Comment System
 
+> **This is a living planning document, not a record of committed decisions.**
+> It evolves as requirements are added and discussed. Every design choice here —
+> including the ADRs listed below — is a **proposal under discussion** until we
+> agree and it lands in code. ADRs will be authored with `Status: Proposed` and
+> only move to `Status: Accepted` once agreed during implementation.
+>
+> **This file is temporary.** `docs/PLAN.md` will be **deleted once the plan is
+> implemented**; the durable record then lives in the code, `docs/README.md`, and
+> the accepted ADRs under `docs/adrs/`.
+
+## Current state
+
+- **Where we are:** planning only. Repo contains `README.md` (the brief),
+  `.gitignore`, and this `docs/PLAN.md`. No implementation code exists yet.
+- **Decisions so far (proposed, evolving):** NestJS + TypeScript, PostgreSQL +
+  Prisma, Repository pattern, Adapter/Strategy for platforms (Facebook first,
+  others stubbed), OAuth2 bearer auth with a vault-backed token store and a
+  prod/local switch, 95%+ test coverage, CI with real Postgres, a manual live
+  smoke test. All captured as *proposed* ADRs, not yet accepted.
+- **Next step:** finish agreeing this plan, then execute TODO step 1 — write the
+  docs and ADRs (the show-stopper) and review them **before** any code.
+- **How this section is maintained:** updated as we progress so it always
+  reflects the true current position and the immediate next action.
+
 ## Context
 
 The README (`README.md`) is a take-home brief: design and **partially implement**
@@ -18,14 +42,19 @@ The repo is currently greenfield (`README.md` + `.gitignore`). This plan builds 
 **core vertical slice**: the two endpoints fully working, backed by
 PostgreSQL/Prisma, with a platform **Adapter/Strategy** abstraction where one
 adapter (**Facebook**) is fully implemented against the real Graph API and the
-rest are explicit stubs. Design decisions are captured as **ADRs**.
+rest are explicit stubs. Design decisions are captured as **ADRs** (proposed
+until agreed).
 
-## Decisions to confirm
+## Proposed decisions (under discussion)
 
-| Area | Choice | Rationale (full reasoning goes in an ADR) |
+These are current proposals, not settled decisions — they have already changed
+across planning rounds and may change again. Each maps to a *proposed* ADR that
+is only accepted once we agree during implementation.
+
+| Area | Proposed choice | Rationale (full reasoning goes in the ADR) |
 | --- | --- | --- |
-| Framework | Express + TypeScript | Thin/unopinionated so the architecture is on display; ADR compares NestJS & Fastify |
-| Persistence | PostgreSQL | Relational data (posts, threaded replies), integrity, idempotent-sync uniqueness |
+| Framework | **NestJS + TypeScript** | Scope grew (auth/vault, adapters, repos, CI); DI/guards/pipes/filters remove hand-wiring. ADR 0002 records the Express→NestJS switch and compares Express & Fastify |
+| Persistence | PostgreSQL | Relational data (posts, threaded replies), integrity, idempotent-sync uniqueness. **ADR 0003 discusses alternatives: MySQL, MongoDB, key-value stores** |
 | ORM | Prisma | Type-safe client, schema doubles as docs; hidden behind a repository interface |
 | Data access | Repository pattern | Decouple service from Prisma; enables in-memory impl for fast tests |
 | Platform support | Adapter/Strategy | Brief says "multiple platforms"; ADR acknowledges it's arguably over-engineering |
@@ -37,26 +66,33 @@ rest are explicit stubs. Design decisions are captured as **ADRs**.
 
 ## Architecture
 
-Layered with dependency inversion:
+NestJS modules, layered with dependency inversion. Nest's DI container wires the
+providers; guards handle auth, pipes handle validation, and an exception filter
+renders the error envelope:
 
 ```
-HTTP layer            (Express router, controllers, zod validation, error mapping)
-   -> Service layer   (CommentService: business rules & orchestration)
-      -> CommentRepository interface   -> Prisma impl | InMemory impl
-      -> PlatformAdapter interface     -> Facebook adapter | NotImplemented stubs
-             -> HttpClient interface   -> fetch-based impl | mock (tests)
-             -> TokenProvider interface -> env/OAuth2 impl | static (tests)
+HTTP layer      (Nest controllers, ValidationPipe/zod, exception filter -> error envelope)
+   -> Service layer   (CommentService provider: business rules & orchestration)
+      -> CommentRepository (injection token)  -> Prisma impl | InMemory impl
+      -> PlatformAdapterRegistry              -> Facebook adapter | NotImplemented stubs
+             -> HttpClient (token)  -> fetch/undici impl | mock (tests)
+             -> TokenProvider (token) -> vault/env impl | static (tests)
 ```
 
-Key abstractions:
+Module layout: `AppModule` composes `CommentsModule` (controllers + service +
+repository provider), `PlatformsModule` (adapter registry + adapters),
+`AuthModule` (`TokenProvider` + `SecretStore`), and a shared `HttpModule`.
+
+Key abstractions (all Nest providers, bound via injection tokens so tests swap
+implementations through the testing module):
 
 - **`CommentRepository`** decouples the service from Prisma; tests use an
   in-memory implementation with no database.
 - **`PlatformAdapter`** (Adapter/Strategy) isolates per-platform API differences
   behind one contract, selected at runtime by a registry.
 - **`TokenProvider`** (authentication abstraction) supplies an OAuth2 bearer
-  token per platform. The production impl sources tokens from env/secret store
-  (extendable to a refresh-token flow); tests use a static provider.
+  token per platform. The production impl sources tokens from a vault-backed
+  `SecretStore` (extendable to a refresh-token flow); tests use a static provider.
 - **`HttpClient`** is the seam for outbound HTTP so the real adapter makes genuine
   Graph API calls in production while tests mock the boundary.
 
@@ -115,8 +151,8 @@ Key abstractions:
 - **Integration tests (real DB):** run the `PrismaCommentRepository` against a
   **real PostgreSQL in Docker**, applying migrations first — verifies schema,
   relations, pagination, and idempotent upserts for real.
-- **E2E tests:** `supertest` against the assembled Express app (in-memory repo +
-  mocked adapter) asserting HTTP status and response shapes.
+- **E2E tests:** `supertest` against the Nest application (built from a testing
+  module with in-memory repo + mocked adapter) asserting HTTP status and shapes.
 - **Coverage gate:** Jest `coverageThreshold` set to **95%** (statements,
   branches, functions, lines); we aim for 100% and only fall back to targeted
   `istanbul ignore` on genuinely untestable lines (e.g. `server.ts` bootstrap),
@@ -160,31 +196,32 @@ CI (it needs a real token and makes live calls).
 package.json, tsconfig.json, jest.config.js, .env.example
 docker-compose.yml                 local Postgres for integration tests
 .github/workflows/ci.yml           CI pipeline
+nest-cli.json                      Nest CLI config
 prisma/schema.prisma
 src/
-  config/env.ts                    validated env loading
+  main.ts                          Nest bootstrap (entry point)
+  app.module.ts                    root module composing feature modules
+  config/env.ts                    validated env loading (Nest ConfigModule)
   domain/comment.ts                domain types
   domain/errors.ts                 typed errors -> HTTP status
+  auth/auth.module.ts              wires TokenProvider + SecretStore providers
   auth/token-provider.ts           TokenProvider interface + factory (vault/env/static)
   auth/secret-store.ts             SecretStore interface (vault vs local switch)
   auth/vault-secret-store.ts       production vault-backed impl
   auth/env-secret-store.ts         local/provisioning env-backed impl
-  http-client/http-client.ts       HttpClient interface + fetch impl
+  http-client/http-client.ts       HttpClient interface + fetch/undici impl
+  platforms/platforms.module.ts    provides the adapter registry
   platforms/platform-adapter.ts    PlatformAdapter interface + registry
   platforms/facebook-adapter.ts    fully-implemented Graph API adapter (OAuth2 bearer)
   platforms/stubs.ts               NotImplemented adapters
-  repositories/comment-repository.ts       interface
+  comments/comments.module.ts      controller + service + repository provider
+  comments/comments.controller.ts  Nest controller (routes)
+  comments/comment-service.ts      use cases
+  comments/dto/                     request/response DTOs + zod validation
+  repositories/comment-repository.ts       interface + injection token
   repositories/prisma-comment-repository.ts
   repositories/in-memory-comment-repository.ts
-  services/comment-service.ts      use cases
-  http/comments.controller.ts
-  http/router.ts
-  http/validation.ts               zod schemas
-  http/serializers.ts              domain -> JSON DTOs
-  http/error-middleware.ts
-  app.ts                           testable composition root
-  composition.ts                   production wiring
-  server.ts                        entry point
+  common/all-exceptions.filter.ts  exception filter -> consistent error envelope
 tests/
   unit/…                           service + adapter + auth unit tests
   integration/prisma-comment-repository.int.test.ts   real Postgres
@@ -197,8 +234,8 @@ docs/
   README.md                        architecture & folder guide
   adding-a-platform.md             step-by-step: how to add a new adapter
   adrs/0001-record-architecture-decisions.md
-  adrs/0002-use-express-for-rest-api.md
-  adrs/0003-use-postgresql-for-persistence.md
+  adrs/0002-use-nestjs-for-rest-api.md          NestJS chosen; Express/Fastify alternatives
+  adrs/0003-use-postgresql-for-persistence.md   PostgreSQL; MySQL/MongoDB/KV alternatives
   adrs/0004-use-prisma-as-orm.md
   adrs/0005-use-repository-pattern.md
   adrs/0006-use-adapter-strategy-for-platforms.md
@@ -207,11 +244,20 @@ docs/
   adrs/0009-store-integration-tokens-in-vault.md
 ```
 
-ADRs use the Nygard format (Status / Context / Decision / Consequences). Each
-lists the alternatives considered and why the chosen option fits. Note the two
-explicitly requested: **0005 Repository pattern** and **0006 Adapter/Strategy**,
-plus **0007 Authentication**, **0008 Testing & CI**, and **0009 Vault token
-storage** (with the prod/local provider switch).
+ADRs use the Nygard format (Status / Context / Decision / Consequences). They are
+authored with **`Status: Proposed`** and only move to **`Status: Accepted`** once
+agreed during implementation (a superseded decision gets a new ADR referencing the
+old one). Each lists the alternatives considered and why the proposed option fits.
+
+- **0002 NestJS** — records the Express→NestJS switch: as scope grew (auth/vault,
+  adapters, repositories, CI), Nest's DI, guards, pipes, and exception filters
+  earn their weight over hand-wired Express; compares Express and Fastify.
+- **0003 PostgreSQL** — why a relational store fits posts + threaded replies +
+  idempotent-sync uniqueness, discussing MySQL, MongoDB, and key-value stores.
+- **0005 Repository pattern** and **0006 Adapter/Strategy** — the two explicitly
+  requested, each with alternatives.
+- Plus **0007 Authentication**, **0008 Testing & CI**, and **0009 Vault token
+  storage** (with the prod/local provider switch).
 
 ## Documentation deliverables
 
@@ -227,30 +273,54 @@ storage** (with the prod/local provider switch).
 
 ## Implementation TODO (ordered)
 
-1. Project scaffold: `package.json`, `tsconfig.json`, `jest.config.js` (coverage
-   thresholds), `.env.example`, `docker-compose.yml`.
-2. Prisma schema + initial migration.
-3. Domain types + typed errors.
-4. Auth abstraction: `TokenProvider` factory + `SecretStore` (vault/env switch)
-   and `HttpClient` seam.
-5. Platform layer: `PlatformAdapter` interface + registry, Facebook adapter, stubs.
-6. Repository layer: interface, Prisma impl, in-memory impl.
-7. Service layer (`CommentService`).
-8. HTTP layer: validation, serializers, controllers, router, error middleware.
-9. Composition + server entry point.
+> **Docs first — show-stopper.** Step 1 (docs + ADRs) must be written and agreed
+> before any implementation begins. If the design docs surface an unresolved
+> decision, we stop and resolve it rather than coding around it.
+
+1. **Docs & ADRs (BLOCKER):** `docs/README.md`, `docs/adding-a-platform.md`, and
+   the 9 ADRs. Nothing below starts until these are reviewed and agreed.
+2. Project scaffold: `package.json`, `tsconfig.json`, `nest-cli.json`,
+   `jest.config.js` (coverage thresholds), `.env.example`, `docker-compose.yml`.
+3. Prisma schema + initial migration.
+4. Domain types + typed errors.
+5. Auth module: `TokenProvider` factory + `SecretStore` (vault/env switch) and
+   `HttpClient` seam.
+6. Platforms module: `PlatformAdapter` interface + registry, Facebook adapter, stubs.
+7. Repository layer: interface + injection token, Prisma impl, in-memory impl.
+8. Comments module: service (use cases) + controller + DTOs/validation.
+9. Common: exception filter (error envelope) + Nest bootstrap (`main.ts`).
 10. Tests: unit, integration (Docker Postgres), e2e — meet 95%+ coverage.
 11. Live smoke test app (`scripts/live-smoke`) with token param + cleanup.
-12. Docs: `docs/README.md`, `docs/adding-a-platform.md`, 9 ADRs.
-13. CI workflow `.github/workflows/ci.yml`.
-14. Verify locally (install, generate, migrate, test, dev curl) then finalize.
+12. CI workflow `.github/workflows/ci.yml`.
+13. Verify locally (install, generate, migrate, test, dev curl) then finalize.
 
 Progress will be tracked in the session task list mirroring these steps.
+
+## Future tasks (backlog / out of current scope)
+
+Explicitly deferred; captured so the extension path is clear and reviewers see
+what a production build would add next:
+
+- **Remaining platform adapters:** implement Twitter/X, Instagram, LinkedIn
+  (currently `NotImplemented` stubs).
+- **Full OAuth2 flow:** authorization-code login + token refresh/exchange, rather
+  than a pre-issued bearer token.
+- **Webhooks / real-time sync:** ingest new comments via platform webhooks instead
+  of on-demand fetches; reconcile with the idempotent-sync upsert.
+- **Rate limiting & retries:** per-platform backoff, circuit breaker, and quota
+  handling around `HttpClient`.
+- **Pagination hardening:** opaque/encoded cursors, and time-window filters.
+- **Observability:** structured logging, metrics, tracing across the HTTP boundary.
+- **CI/CD hardening (deferred):** SAST + dependency scanning, container image
+  build/publish, and deployment pipeline.
+- **AuthZ:** per-tenant/account authorization on posts and comments.
 
 ## Verification
 
 1. `docker compose up -d db` then `npm run prisma:migrate` (schema applies).
 2. `npm test` — unit + integration + e2e green, coverage ≥ 95%.
-3. `npm run dev` and hit both endpoints with curl (documented in `docs/README.md`).
+3. `npm run start:dev` and hit both endpoints with curl (documented in
+   `docs/README.md`).
 4. CI green on push (Postgres service container + coverage gate).
 
 ## Notes / non-goals
