@@ -16,9 +16,10 @@
   this `docs/PLAN.md`. No implementation code exists yet.
 - **Decisions so far (proposed, evolving):** NestJS + TypeScript, PostgreSQL +
   Prisma, Repository pattern, Adapter/Strategy for platforms (Facebook first,
-  others stubbed), OAuth2 bearer auth with a vault-backed token store and a
-  prod/local switch, 95%+ test coverage, CI with real Postgres, a manual live
-  smoke test. All captured as *proposed* ADRs, not yet accepted.
+  others stubbed), OAuth2 bearer auth via a **caller-supplied pass-through token**
+  (`X-Platform-Token` header) behind a `TokenProvider` abstraction, 95%+ test
+  coverage, CI with real Postgres, a manual live smoke test. All captured as
+  *proposed* ADRs, not yet accepted.
 - **Next step:** finish agreeing this plan, then execute TODO step 1 — write the
   docs and ADRs (the show-stopper) and review them **before** any code.
 - **How this section is maintained:** updated as we progress so it always
@@ -52,13 +53,13 @@ is only accepted once we agree during implementation.
 
 | Area | Proposed choice | Rationale (full reasoning goes in the ADR) |
 | --- | --- | --- |
-| Framework | **NestJS + TypeScript** | Scope grew (auth/vault, adapters, repos, CI); DI/guards/pipes/filters remove hand-wiring. ADR 0002 records the Express→NestJS switch and compares Express & Fastify |
+| Framework | **NestJS + TypeScript** | Scope grew (auth, adapters, repos, CI); DI/guards/pipes/filters remove hand-wiring. ADR 0002 records the Express→NestJS switch and compares Express & Fastify |
 | Persistence | PostgreSQL | Relational data (posts, threaded replies), integrity, idempotent-sync uniqueness. **ADR 0003 discusses alternatives: MySQL, MongoDB, key-value stores** |
 | ORM | Prisma | Type-safe client, schema doubles as docs; hidden behind a repository interface |
 | Data access | Repository pattern | Decouple service from Prisma; enables in-memory impl for fast tests |
 | Platform support | Adapter/Strategy | System supports multiple platforms; ADR weighs the abstraction cost vs. flexibility |
 | **First real platform** | **Facebook (Graph API)** | Fully implemented; Twitter/X, Instagram, LinkedIn stubbed |
-| **Auth** | **OAuth2 bearer token + auth abstraction** | Real `Authorization: Bearer <token>` calls; `TokenProvider` abstraction per platform |
+| **Auth** | **Pass-through bearer token (BYOT)** | Caller supplies token via `X-Platform-Token`; forwarded as `Authorization: Bearer` to the platform. Behind a `TokenProvider` abstraction (`RequestScopedTokenProvider`). ADR 0007 |
 | Scope | Core vertical slice | Two endpoints end-to-end, one real adapter, others stubbed |
 | Tests | In-memory repo (unit) + real Postgres in Docker (integration) | See Testing & CI |
 | **Coverage** | **95% minimum, target 100%** | Enforced via Jest coverage thresholds and in CI |
@@ -75,12 +76,12 @@ HTTP layer      (Nest controllers, ValidationPipe/zod, exception filter -> error
       -> CommentRepository (injection token)  -> Prisma impl | InMemory impl
       -> PlatformAdapterRegistry              -> Facebook adapter | NotImplemented stubs
              -> HttpClient (token)  -> fetch/undici impl | mock (tests)
-             -> TokenProvider (token) -> vault/env impl | static (tests)
+             -> TokenProvider (token) -> RequestScopedTokenProvider | static (tests)
 ```
 
 Module layout: `AppModule` composes `CommentsModule` (controllers + service +
 repository provider), `PlatformsModule` (adapter registry + adapters),
-`AuthModule` (`TokenProvider` + `SecretStore`), and a shared `HttpModule`.
+`AuthModule` (`TokenProvider`), and a shared `HttpModule`.
 
 Key abstractions (all Nest providers, bound via injection tokens so tests swap
 implementations through the testing module):
@@ -89,9 +90,11 @@ implementations through the testing module):
   in-memory implementation with no database.
 - **`PlatformAdapter`** (Adapter/Strategy) isolates per-platform API differences
   behind one contract, selected at runtime by a registry.
-- **`TokenProvider`** (authentication abstraction) supplies an OAuth2 bearer
-  token per platform. The production impl sources tokens from a vault-backed
-  `SecretStore` (extendable to a refresh-token flow); tests use a static provider.
+- **`TokenProvider`** (authentication abstraction) supplies the platform bearer
+  token. This iteration uses a **`RequestScopedTokenProvider`** that returns the
+  caller-supplied token from the request context (pass-through / BYOT); tests use
+  a static provider. A server-side vault-sourced provider can be swapped in later
+  without touching adapters (see ADR 0007 and the future-tasks backlog).
 - **`HttpClient`** is the seam for outbound HTTP so the real adapter makes genuine
   Graph API calls in production while tests mock the boundary.
 
@@ -109,26 +112,28 @@ implementations through the testing module):
 
 - Facebook Graph API is called with an **OAuth2 bearer token**
   (`Authorization: Bearer <access-token>`).
-- A `TokenProvider` interface abstracts token acquisition per platform, with
-  swappable backends selected by environment (a small factory keyed on
-  `TOKEN_SOURCE`):
-  - **Production (`vault`):** fetch the integration token from a secret vault
-    (e.g. HashiCorp Vault / cloud secret manager) via a `SecretStore` interface.
-    Tokens are read at runtime, never persisted to disk or logs, and cached
-    in-memory with a TTL. Designed so a refresh-token/exchange flow can be added
-    without touching adapters.
-  - **Local development (`env`/`provisioning`):** use a locally-provisioned
-    token supplied via env (`.env`, git-ignored) — no vault dependency for
-    day-to-day dev.
-  - **Tests:** a static token provider returns a fixed value; no real OAuth.
-- The prod-vs-local switch is a single seam (`SecretStore` behind the
-  `TokenProvider` factory) so swapping backends needs no adapter/service changes.
-- No secrets are hardcoded; tokens come from the vault (prod) or env (local) only.
-- Full OAuth *authorization-code login UI* is out of scope for this iteration
-  (we assume a pre-issued/provisioned access token), documented as a non-goal.
-- **ADR 0009** records the decision to store integration tokens in a vault, the
-  prod/local provider switch, and alternatives considered (env-only, encrypted
-  file, cloud secret manager).
+- **Pass-through / bring-your-own-token (BYOT):** the API caller supplies the
+  platform access token on each request via a dedicated **`X-Platform-Token`**
+  header. We forward it to the platform as `Authorization: Bearer <token>` and
+  **never persist or log it**. The system is stateless with respect to
+  credentials — no vault, no secret store, no prod/local environment switch.
+- A `TokenProvider` interface still abstracts token acquisition so the design
+  stays clean and swappable. This iteration binds a **`RequestScopedTokenProvider`**
+  (a request-scoped NestJS provider) that returns the caller-supplied token from
+  the current request context. Tests bind a static provider returning a fixed
+  value. Adapters depend only on `TokenProvider`, so a future server-side
+  vault-sourced provider swaps in without touching adapters or the service.
+- **Dedicated header, not `Authorization`:** we deliberately do not reuse
+  `Authorization` for the platform token, so that if we ever add authentication
+  on *our own* API, `Authorization` is free for our credentials without conflict.
+- **Security:** the token travels in every request, so this is only safe over
+  **HTTPS/TLS**, and request/error logging must never capture `X-Platform-Token`.
+  No secrets are hardcoded; no token is stored at rest.
+- Full OAuth *authorization-code login UI*, token refresh/lifecycle, and
+  server-side vault-sourced token storage are out of scope for this iteration
+  (documented as non-goals; vault storage is on the future-tasks backlog).
+- **ADR 0007** records the pass-through decision, the dedicated-header rationale,
+  and alternatives considered (server-side vault-sourced token, full OAuth2 flow).
 
 ## REST API (`/api/v1`)
 
@@ -203,11 +208,9 @@ src/
   config/env.ts                    validated env loading (Nest ConfigModule)
   domain/comment.ts                domain types
   domain/errors.ts                 typed errors -> HTTP status
-  auth/auth.module.ts              wires TokenProvider + SecretStore providers
-  auth/token-provider.ts           TokenProvider interface + factory (vault/env/static)
-  auth/secret-store.ts             SecretStore interface (vault vs local switch)
-  auth/vault-secret-store.ts       production vault-backed impl
-  auth/env-secret-store.ts         local/provisioning env-backed impl
+  auth/auth.module.ts              wires the TokenProvider provider
+  auth/token-provider.ts           TokenProvider interface + injection token
+  auth/request-scoped-token-provider.ts  reads X-Platform-Token from request (BYOT)
   http-client/http-client.ts       HttpClient interface + fetch/undici impl
   platforms/platforms.module.ts    provides the adapter registry
   platforms/platform-adapter.ts    PlatformAdapter interface + registry
@@ -238,9 +241,8 @@ docs/
   adrs/0004-use-prisma-as-orm.md
   adrs/0005-use-repository-pattern.md
   adrs/0006-use-adapter-strategy-for-platforms.md
-  adrs/0007-authenticate-with-oauth2-bearer-token.md
+  adrs/0007-authenticate-with-oauth2-bearer-token.md  pass-through/BYOT; alternatives
   adrs/0008-testing-and-ci-strategy.md
-  adrs/0009-store-integration-tokens-in-vault.md
 ```
 
 ADRs use the Nygard format (Status / Context / Decision / Consequences). They are
@@ -248,22 +250,23 @@ authored with **`Status: Proposed`** and only move to **`Status: Accepted`** onc
 agreed during implementation (a superseded decision gets a new ADR referencing the
 old one). Each lists the alternatives considered and why the proposed option fits.
 
-- **0002 NestJS** — records the Express→NestJS switch: as scope grew (auth/vault,
+- **0002 NestJS** — records the Express→NestJS switch: as scope grew (auth,
   adapters, repositories, CI), Nest's DI, guards, pipes, and exception filters
   earn their weight over hand-wired Express; compares Express and Fastify.
 - **0003 PostgreSQL** — why a relational store fits posts + threaded replies +
   idempotent-sync uniqueness, discussing MySQL, MongoDB, and key-value stores.
 - **0005 Repository pattern** and **0006 Adapter/Strategy** — the two explicitly
   requested, each with alternatives.
-- Plus **0007 Authentication**, **0008 Testing & CI**, and **0009 Vault token
-  storage** (with the prod/local provider switch).
+- Plus **0007 Authentication** (pass-through/BYOT, dedicated `X-Platform-Token`
+  header; server-side vault storage deferred to future tasks) and **0008 Testing
+  & CI**.
 
 ## Documentation deliverables
 
 - `docs/README.md`: architecture overview, folder structure, data model, API
-  reference, auth setup (vault vs local token provisioning), how to run
-  locally/Docker, how to run tests & CI, and how to run the live smoke test
-  (`npm run smoke -- --token … --post-id … [--cleanup=false]`).
+  reference, auth setup (pass-through `X-Platform-Token`, TLS-only, never logged),
+  how to run locally/Docker, how to run tests & CI, and how to run the live smoke
+  test (`npm run smoke -- --token … --post-id … [--cleanup=false]`).
 - `docs/adding-a-platform.md`: a concrete guide to adding a new social-network
   adapter — implement `PlatformAdapter`, wire a `TokenProvider`, register it,
   extend the `Platform` enum, add tests — with a checklist.
@@ -277,13 +280,13 @@ old one). Each lists the alternatives considered and why the proposed option fit
 > decision, we stop and resolve it rather than coding around it.
 
 1. **Docs & ADRs (BLOCKER):** `docs/README.md`, `docs/adding-a-platform.md`, and
-   the 9 ADRs. Nothing below starts until these are reviewed and agreed.
+   the 8 ADRs. Nothing below starts until these are reviewed and agreed.
 2. Project scaffold: `package.json`, `tsconfig.json`, `nest-cli.json`,
    `jest.config.js` (coverage thresholds), `.env.example`, `docker-compose.yml`.
 3. Prisma schema + initial migration.
 4. Domain types + typed errors.
-5. Auth module: `TokenProvider` factory + `SecretStore` (vault/env switch) and
-   `HttpClient` seam.
+5. Auth module: `TokenProvider` interface + `RequestScopedTokenProvider` (reads
+   `X-Platform-Token`) and the `HttpClient` seam.
 6. Platforms module: `PlatformAdapter` interface + registry, Facebook adapter, stubs.
 7. Repository layer: interface + injection token, Prisma impl, in-memory impl.
 8. Comments module: service (use cases) + controller + DTOs/validation.
@@ -302,8 +305,12 @@ what a production build would add next:
 
 - **Remaining platform adapters:** implement Twitter/X, Instagram, LinkedIn
   (currently `NotImplemented` stubs).
+- **Server-side token storage:** a vault-sourced `TokenProvider` (HashiCorp
+  Vault / cloud secret manager) keyed per connected account, with a prod/local
+  provider switch — so the service holds tokens instead of the caller passing
+  them. Swaps in behind the existing `TokenProvider` seam.
 - **Full OAuth2 flow:** authorization-code login + token refresh/exchange, rather
-  than a pre-issued bearer token.
+  than a caller-supplied pre-issued bearer token.
 - **Webhooks / real-time sync:** ingest new comments via platform webhooks instead
   of on-demand fetches; reconcile with the idempotent-sync upsert.
 - **Rate limiting & retries:** per-platform backoff, circuit breaker, and quota
@@ -330,8 +337,11 @@ what a production build would add next:
 - Real Graph API calls happen in production via `HttpClient`; **tests mock the
   HTTP boundary** (no live Facebook calls in CI). Real-DB behaviour *is* tested
   against Postgres in Docker.
-- OAuth authorization-code login UI / token issuance is out of scope; we assume a
-  pre-issued bearer token supplied via config.
+- OAuth authorization-code login UI / token issuance is out of scope; the caller
+  supplies a pre-issued bearer token per request (`X-Platform-Token`, pass-through).
+- Server-side token storage (vault) and token refresh/lifecycle are out of scope
+  for this iteration, deferred to future tasks; the `TokenProvider` seam is kept
+  so they can be added without touching adapters.
 - Security scanning, image publishing, and deployment are out of CI scope (noted).
 - Only Facebook is fully implemented; other platform adapters are intentionally
   stubbed to show the extension point without over-building.
