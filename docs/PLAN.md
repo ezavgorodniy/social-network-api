@@ -12,16 +12,21 @@
 
 ## Current state
 
-- **Where we are:** planning only. Repo contains `README.md`, `.gitignore`, and
-  this `docs/PLAN.md`. No implementation code exists yet.
-- **Decisions so far (proposed, evolving):** NestJS + TypeScript, PostgreSQL +
-  Prisma, Repository pattern, Adapter/Strategy for platforms (Facebook first,
-  others stubbed), OAuth2 bearer auth via a **caller-supplied pass-through token**
-  (`X-Platform-Token` header) behind a `TokenProvider` abstraction, 95%+ test
-  coverage, CI with real Postgres, a manual live smoke test. All captured as
-  *proposed* ADRs, not yet accepted.
-- **Next step:** finish agreeing this plan, then execute TODO step 1 — write the
-  docs and ADRs (the show-stopper) and review them **before** any code.
+- **Where we are:** the architecture/design stage is complete and pushed (tagged
+  `architecture`). The repo contains `README.md`, `CLAUDE.md`, `.gitignore`, this
+  `docs/PLAN.md`, `docs/README.md`, and the nine ADRs under `docs/adrs/`. **No
+  implementation code exists yet** — the next stage is building the vertical slice.
+- **Decisions so far:** NestJS + TypeScript, PostgreSQL + Prisma behind a repository
+  interface, Adapter/Strategy for platforms (Facebook first, others stubbed),
+  pass-through (BYOT) auth via `X-Platform-Token` behind a `TokenProvider`
+  abstraction, persistence scoped so posts are the required anchor and comments a
+  cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual live smoke test.
+  All captured as ADRs, still authored as `Status: Proposed`.
+- **Next step:** execute TODO step 2 — the project scaffold (`package.json`,
+  `tsconfig.json`, `nest-cli.json`, Jest config with coverage thresholds,
+  `.env.example`, `docker-compose.yml`) — then work down the TODO one step at a time.
+- **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
+  postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
   reflects the true current position and the immediate next action.
 
@@ -55,6 +60,7 @@ is only accepted once we agree during implementation.
 | --- | --- | --- |
 | Framework | **NestJS + TypeScript** | Scope grew (auth, adapters, repos, CI); DI/guards/pipes/filters remove hand-wiring. ADR 0002 records the Express→NestJS switch and compares Express & Fastify |
 | Persistence | PostgreSQL | Relational data (posts, threaded replies), integrity, idempotent-sync uniqueness. **ADR 0003 discusses alternatives: MySQL, MongoDB, key-value stores** |
+| **Persistence scope** | **Posts required; comments an optional cache** | Posts are the anchor that makes our `postId` meaningful; the platform is the source of truth for comment content, so stored comments are a documented cache. ADR 0009 |
 | ORM | Prisma | Type-safe client, schema doubles as docs; hidden behind a repository interface |
 | Data access | Repository pattern | Decouple service from Prisma; enables in-memory impl for fast tests |
 | Platform support | Adapter/Strategy | System supports multiple platforms; ADR weighs the abstraction cost vs. flexibility |
@@ -176,8 +182,8 @@ the deferred webhooks task.
   module with in-memory repo + mocked adapter) asserting HTTP status and shapes.
 - **Coverage gate:** Jest `coverageThreshold` set to **95%** (statements,
   branches, functions, lines); we aim for 100% and only fall back to targeted
-  `istanbul ignore` on genuinely untestable lines (e.g. `server.ts` bootstrap),
-  documented where used.
+  `istanbul ignore` on genuinely untestable lines (e.g. the `main.ts` Nest
+  bootstrap), documented where used.
 
 ## Live smoke test (real token against the real platform)
 
@@ -286,9 +292,10 @@ old one). Each lists the alternatives considered and why the proposed option fit
   reference, auth setup (pass-through `X-Platform-Token`, TLS-only, never logged),
   how to run locally/Docker, how to run tests & CI, and how to run the live smoke
   test (`npm run smoke -- --token … --post-id … [--cleanup=false]`).
-- `docs/adding-a-platform.md`: a concrete guide to adding a new social-network
-  adapter — implement `PlatformAdapter`, wire a `TokenProvider`, register it,
-  extend the `Platform` enum, add tests — with a checklist.
+- `docs/adding-a-platform.md` *(deferred until the platforms module exists)*: a
+  concrete guide to adding a new social-network adapter — implement
+  `PlatformAdapter`, wire a `TokenProvider`, register it, extend the `Platform`
+  enum, add tests — with a checklist.
 - ADRs in `docs/adrs/` documenting the major design decisions.
 - Root `README.md`: project overview with a short pointer to `docs/`.
 
@@ -298,8 +305,9 @@ old one). Each lists the alternatives considered and why the proposed option fit
 > before any implementation begins. If the design docs surface an unresolved
 > decision, we stop and resolve it rather than coding around it.
 
-1. **Docs & ADRs (BLOCKER):** `docs/README.md`, `docs/adding-a-platform.md`, and
-   the 9 ADRs. Nothing below starts until these are reviewed and agreed.
+1. **Docs & ADRs (BLOCKER) — done.** `docs/README.md` and the 9 ADRs are written
+   and pushed (tagged `architecture`). `docs/adding-a-platform.md` is deferred until
+   the platforms module exists so it matches real code. This blocker is cleared.
 2. Project scaffold: `package.json`, `tsconfig.json`, `nest-cli.json`,
    `jest.config.js` (coverage thresholds), `.env.example`, `docker-compose.yml`.
 3. Prisma schema + initial migration.
