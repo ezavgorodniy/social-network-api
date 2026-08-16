@@ -100,6 +100,23 @@ implementations through the testing module):
 
 ## Data model (`prisma/schema.prisma`)
 
+**Role of the database:** the platform (Facebook) is the live source of truth for
+comment content; Postgres is our **system of record / audit trail** for activity
+that flows through this API — which posts were published through us, which comments
+we retrieved, which replies we added, and when. Managing comments is the system's
+primary focus, so we keep a durable record rather than being a stateless proxy.
+`GET` upserts fetched comments (idempotent on `(platform, externalId)`) and returns
+them; `POST reply` calls the platform then persists the created reply. Webhook-based
+real-time ingestion is a future task; today the record is populated on-demand.
+
+**Comments added outside our system** (third parties replying directly on the
+platform) are the primary input, not an edge case. They enter the record via the
+same retrieval path: `GET` fetches live and upserts, so an external comment appears
+the first time its post is requested and updates (never duplicates) on later fetches.
+This leaves a **freshness bound, not a correctness gap** — with no push channel yet,
+the record reflects platform state as of the last `GET`; closing that is the deferred
+webhooks task.
+
 - `Platform` enum: `FACEBOOK`, `TWITTER`, `INSTAGRAM`, `LINKEDIN` (extendable).
 - `Post`: `id`, `platform`, `externalId`, `publishedAt`, timestamps. Unique on
   `(platform, externalId)`.
@@ -137,8 +154,9 @@ implementations through the testing module):
 
 ## REST API (`/api/v1`)
 
-- `GET /posts/:postId/comments?limit&cursor` — retrieve comments for a published
-  post. Cursor-paginated, oldest-first. `404` if post missing/unpublished.
+- `GET /posts/:postId/comments?limit&cursor` — fetch comments from the platform
+  adapter, upsert them into the record (idempotent), and return them.
+  Cursor-paginated, oldest-first. `404` if post missing/unpublished.
 - `POST /comments/:commentId/replies` — body `{ content }`. Delegates to the
   platform adapter (real Graph API call), then persists. `201` created, `400`
   invalid content, `404` unknown comment, `501` platform not implemented,
