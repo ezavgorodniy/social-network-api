@@ -14,7 +14,8 @@
 
 - **Where we are:** the architecture/design stage is complete and pushed (tagged
   `architecture`). The repo contains `README.md`, `CLAUDE.md`, `.gitignore`, this
-  `docs/PLAN.md`, `docs/README.md`, and the nine ADRs under `docs/adrs/`. **No
+  `docs/PLAN.md`, `docs/README.md`, and the ADRs under `docs/adrs/` (0001–0009;
+  0010 added during scaffolding). **No
   implementation code exists yet** — the next stage is building the vertical slice.
 - **Decisions so far:** NestJS + TypeScript, PostgreSQL + Prisma behind a repository
   interface, Adapter/Strategy for platforms (Facebook first, others stubbed),
@@ -81,7 +82,7 @@ HTTP layer      (Nest controllers, ValidationPipe/zod, exception filter -> error
    -> Service layer   (CommentService provider: business rules & orchestration)
       -> CommentRepository (injection token)  -> Prisma impl | InMemory impl
       -> PlatformAdapterRegistry              -> Facebook adapter | NotImplemented stubs
-             -> HttpClient (token)  -> fetch/undici impl | mock (tests)
+             -> HttpClient (token)  -> native fetch impl | mock (tests)
              -> TokenProvider (token) -> RequestScopedTokenProvider | static (tests)
 ```
 
@@ -234,7 +235,7 @@ src/
   auth/auth.module.ts              wires the TokenProvider provider
   auth/token-provider.ts           TokenProvider interface + injection token
   auth/request-scoped-token-provider.ts  reads X-Platform-Token from request (BYOT)
-  http-client/http-client.ts       HttpClient interface + fetch/undici impl
+  http-client/http-client.ts       HttpClient interface + native fetch impl (ADR 0010)
   platforms/platforms.module.ts    provides the adapter registry
   platforms/platform-adapter.ts    PlatformAdapter interface + registry
   platforms/facebook-adapter.ts    fully-implemented Graph API adapter (OAuth2 bearer)
@@ -267,6 +268,7 @@ docs/
   adrs/0007-authenticate-with-oauth2-bearer-token.md  pass-through/BYOT; alternatives
   adrs/0008-testing-and-ci-strategy.md
   adrs/0009-persist-posts-cache-comments.md           posts required; comments cached
+  adrs/0010-use-native-fetch-for-outbound-http.md     native fetch; undici/axios/got alternatives
 ```
 
 ADRs use the Nygard format (Status / Context / Decision / Consequences). They are
@@ -283,8 +285,10 @@ old one). Each lists the alternatives considered and why the proposed option fit
   requested, each with alternatives.
 - Plus **0007 Authentication** (pass-through/BYOT, dedicated `X-Platform-Token`
   header; server-side vault storage deferred to future tasks), **0008 Testing
-  & CI**, and **0009 Persistence scope** (posts required as the anchor; comments
-  stored as an optional cache with the platform as source of truth).
+  & CI**, **0009 Persistence scope** (posts required as the anchor; comments
+  stored as an optional cache with the platform as source of truth), and
+  **0010 Outbound HTTP** (native `fetch` behind the `HttpClient` seam; undici,
+  axios, and got weighed as alternatives).
 
 ## Documentation deliverables
 
@@ -305,7 +309,7 @@ old one). Each lists the alternatives considered and why the proposed option fit
 > before any implementation begins. If the design docs surface an unresolved
 > decision, we stop and resolve it rather than coding around it.
 
-1. **Docs & ADRs (BLOCKER) — done.** `docs/README.md` and the 9 ADRs are written
+1. **Docs & ADRs (BLOCKER) — done.** `docs/README.md` and the ADRs are written
    and pushed (tagged `architecture`). `docs/adding-a-platform.md` is deferred until
    the platforms module exists so it matches real code. This blocker is cleared.
 2. Project scaffold: `package.json`, `tsconfig.json`, `nest-cli.json`,

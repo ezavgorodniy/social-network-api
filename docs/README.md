@@ -47,7 +47,7 @@ HTTP layer      (Nest controllers, validation pipe, exception filter -> error en
    -> Service layer   (CommentService: business rules & orchestration)
       -> CommentRepository (injection token)  -> Prisma impl | InMemory impl
       -> PlatformAdapterRegistry              -> Facebook adapter | NotImplemented stubs
-             -> HttpClient   -> fetch/undici impl | mock (tests)
+             -> HttpClient   -> native fetch impl | mock (tests)
              -> TokenProvider -> RequestScopedTokenProvider | static (tests)
 ```
 
@@ -61,8 +61,9 @@ Key seams, all bound via Nest injection tokens so tests can swap implementations
 - **`TokenProvider`** supplies the platform bearer token. This iteration binds a
   `RequestScopedTokenProvider` that returns the caller-supplied token
   (pass-through / BYOT). See [ADR 7](adrs/0007-authenticate-with-oauth2-bearer-token.md).
-- **`HttpClient`** is the outbound-HTTP seam: real Graph API calls in production,
-  mocked at the boundary in tests.
+- **`HttpClient`** is the outbound-HTTP seam: real Graph API calls via native
+  `fetch` in production, mocked at the boundary in tests. See
+  [ADR 10](adrs/0010-use-native-fetch-for-outbound-http.md).
 
 ## Folder structure
 
@@ -75,7 +76,7 @@ src/
   domain/comment.ts                 Domain types
   domain/errors.ts                  Typed errors -> HTTP status
   auth/                             TokenProvider + RequestScopedTokenProvider (BYOT)
-  http-client/                      HttpClient interface + fetch/undici impl
+  http-client/                      HttpClient interface + native fetch impl
   platforms/                        PlatformAdapter interface, registry, Facebook, stubs
   comments/                         Controller + service + DTOs/validation
   repositories/                     CommentRepository interface + Prisma & in-memory impls
