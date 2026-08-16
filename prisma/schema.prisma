@@ -1,0 +1,59 @@
+// Prisma schema for the multi-platform comment system.
+// Data-model rationale: docs/adrs/0009-persist-posts-cache-comments.md
+//   - Post is the required anchor: it maps our internal id to the platform's
+//     (platform, externalId), which is what makes GET /posts/:postId/... resolve.
+//   - Comment is an optional cache/projection; the platform is the source of truth.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Platform {
+  FACEBOOK
+  TWITTER
+  INSTAGRAM
+  LINKEDIN
+}
+
+/// A post published through this system. The anchor that gives our API its IDs
+/// meaning by mapping an internal id to the platform's own identifier.
+model Post {
+  id          String   @id @default(cuid())
+  platform    Platform
+  externalId  String
+  publishedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  comments Comment[]
+
+  @@unique([platform, externalId])
+}
+
+/// A comment on a post. Stored as a cache/projection of platform-owned data,
+/// plus replies we author. Threaded via the self-relation on parentCommentId.
+model Comment {
+  id           String   @id @default(cuid())
+  postId       String
+  platform     Platform
+  externalId   String
+  authorHandle String
+  content      String
+  createdAt    DateTime @default(now())
+  syncedAt     DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  parentCommentId String?
+
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentThread", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentThread")
+
+  @@unique([platform, externalId])
+  @@index([postId])
+  @@index([parentCommentId])
+}
