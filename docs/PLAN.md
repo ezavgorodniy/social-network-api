@@ -100,22 +100,21 @@ implementations through the testing module):
 
 ## Data model (`prisma/schema.prisma`)
 
-**Role of the database:** the platform (Facebook) is the live source of truth for
-comment content; Postgres is our **system of record / audit trail** for activity
-that flows through this API — which posts were published through us, which comments
-we retrieved, which replies we added, and when. Managing comments is the system's
-primary focus, so we keep a durable record rather than being a stateless proxy.
-`GET` upserts fetched comments (idempotent on `(platform, externalId)`) and returns
-them; `POST reply` calls the platform then persists the created reply. Webhook-based
-real-time ingestion is a future task; today the record is populated on-demand.
+**Role of the database** (see ADR 0009): we persist what genuinely requires storage
+and treat the rest as a deliberate, reversible choice. **`Post` is required** — this
+is a scheduling product, so `GET /posts/:postId/comments` is keyed on *our* `postId`,
+and we must hold the mapping to `(platform, externalId)` recorded at publish time;
+without it the ID resolves to nothing. **`Comment` storage is an optional cache** —
+the platform is the source of truth; we store a projection for history, cross-platform
+queries, and resilience, accepting staleness. `GET` fetches live and upserts
+(idempotent on `(platform, externalId)`, `syncedAt` records recency); `POST reply`
+calls the platform then persists the reply (also enabling idempotent reply handling).
 
 **Comments added outside our system** (third parties replying directly on the
-platform) are the primary input, not an edge case. They enter the record via the
-same retrieval path: `GET` fetches live and upserts, so an external comment appears
-the first time its post is requested and updates (never duplicates) on later fetches.
-This leaves a **freshness bound, not a correctness gap** — with no push channel yet,
-the record reflects platform state as of the last `GET`; closing that is the deferred
-webhooks task.
+platform) are the primary input, not an edge case, and enter via the same fetch-and-
+upsert path. This leaves a **freshness bound, not a correctness gap** — with no push
+channel yet, the cache reflects platform state as of the last `GET`; closing that is
+the deferred webhooks task.
 
 - `Platform` enum: `FACEBOOK`, `TWITTER`, `INSTAGRAM`, `LINKEDIN` (extendable).
 - `Post`: `id`, `platform`, `externalId`, `publishedAt`, timestamps. Unique on
@@ -261,6 +260,7 @@ docs/
   adrs/0006-use-adapter-strategy-for-platforms.md
   adrs/0007-authenticate-with-oauth2-bearer-token.md  pass-through/BYOT; alternatives
   adrs/0008-testing-and-ci-strategy.md
+  adrs/0009-persist-posts-cache-comments.md           posts required; comments cached
 ```
 
 ADRs use the Nygard format (Status / Context / Decision / Consequences). They are
@@ -276,8 +276,9 @@ old one). Each lists the alternatives considered and why the proposed option fit
 - **0005 Repository pattern** and **0006 Adapter/Strategy** — the two explicitly
   requested, each with alternatives.
 - Plus **0007 Authentication** (pass-through/BYOT, dedicated `X-Platform-Token`
-  header; server-side vault storage deferred to future tasks) and **0008 Testing
-  & CI**.
+  header; server-side vault storage deferred to future tasks), **0008 Testing
+  & CI**, and **0009 Persistence scope** (posts required as the anchor; comments
+  stored as an optional cache with the platform as source of truth).
 
 ## Documentation deliverables
 
@@ -298,7 +299,7 @@ old one). Each lists the alternatives considered and why the proposed option fit
 > decision, we stop and resolve it rather than coding around it.
 
 1. **Docs & ADRs (BLOCKER):** `docs/README.md`, `docs/adding-a-platform.md`, and
-   the 8 ADRs. Nothing below starts until these are reviewed and agreed.
+   the 9 ADRs. Nothing below starts until these are reviewed and agreed.
 2. Project scaffold: `package.json`, `tsconfig.json`, `nest-cli.json`,
    `jest.config.js` (coverage thresholds), `.env.example`, `docker-compose.yml`.
 3. Prisma schema + initial migration.

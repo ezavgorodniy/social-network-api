@@ -10,6 +10,31 @@ extension point.
 > Decision Records under [`docs/adrs/`](adrs/). **Adding a new platform** is
 > documented in [`docs/adding-a-platform.md`](adding-a-platform.md).
 
+## Assumptions
+
+The requirements leave some details unspecified; these are the assumptions this
+implementation makes. Each is a deliberate, reversible choice, recorded in the ADRs.
+
+- **Posts are published through this system.** "A published post" is one this
+  scheduling product published, so we hold the mapping from our `postId` to the
+  platform's `(platform, externalId)`. Persisting posts is therefore *required*, not
+  optional — the API's IDs are meaningless without it. ([ADR 9](adrs/0009-persist-posts-cache-comments.md))
+- **The platform is the source of truth for comments; we cache.** Comments are
+  fetched live and stored as a projection for history, cross-platform queries, and
+  resilience — accepting staleness between reads. Storage here is a reasoned
+  trade-off, not a requirement. ([ADR 9](adrs/0009-persist-posts-cache-comments.md))
+- **The caller supplies the platform token per request** (`X-Platform-Token`,
+  pass-through / BYOT). We do not manage or store platform credentials this
+  iteration. ([ADR 7](adrs/0007-authenticate-with-oauth2-bearer-token.md))
+- **One platform is fully implemented (Facebook).** The rest are explicit stubs that
+  fail loudly, demonstrating the extension point without over-building.
+  ([ADR 6](adrs/0006-use-adapter-strategy-for-platforms.md))
+- **Retrieval is on-demand, not real-time.** There is no webhook/push ingestion yet;
+  the cache reflects platform state as of the last `GET`. Webhooks are a future task.
+- **No authentication or authorization on our own API yet.** Adding it later is why
+  the platform token uses a dedicated header rather than `Authorization`.
+  ([ADR 7](adrs/0007-authenticate-with-oauth2-bearer-token.md))
+
 ## Architecture
 
 The application is a set of NestJS modules layered with dependency inversion.
@@ -68,36 +93,37 @@ docs/                               This guide, the platform guide, and ADRs
 
 ### What we persist, and why
 
-The platform (e.g. Facebook) remains the **live source of truth** for comment
-content. PostgreSQL is our **system of record / audit trail** for activity that
-flows through this API: which posts were published through us, which comments we
-retrieved, and which replies we added — with who did it and when. Managing comments
-is the system's primary focus, so keeping a durable record of that activity — rather
-than being a stateless proxy — is a deliberate goal.
+We persist what genuinely *requires* storage, and treat everything else as a
+deliberate, cost-bearing choice. See
+[ADR 9](adrs/0009-persist-posts-cache-comments.md) for the full reasoning.
 
-Concretely, `GET .../comments` fetches from the platform adapter, upserts the
-results into Postgres (idempotent on `(platform, externalId)`), and returns them;
-`POST .../replies` calls the platform and then persists the created reply. This is
-why the schema carries `syncedAt` and the `(platform, externalId)` uniqueness
-constraint. Real-time ingestion via webhooks is a future task; today the record is
-populated on-demand as requests pass through.
+- **`Post` — required.** This is a scheduling product, so "a published post" means one
+  published *through our system*. `GET /posts/:postId/comments` is keyed on **our**
+  `postId`, so we must have recorded the post at publish time, mapping our id to
+  `(platform, externalId)`. Without it, `:postId` resolves to nothing. Posts are the
+  anchor that makes the API's IDs meaningful.
+- **`Comment` — optional cache.** The platform is the **source of truth** for comment
+  content. Storing comments is a projection we adopt deliberately for its value
+  (history, cross-platform queries, resilience to platform outages), accepting the
+  cost (staleness between reads, duplication). `GET .../comments` fetches live from
+  the platform adapter, upserts the results (idempotent on `(platform, externalId)`),
+  and returns them; `syncedAt` records recency.
+- **Replies we author — persisted.** Recording replies we post gives an audit of our
+  actions and a basis for idempotent reply handling (no double-post on retry).
 
 #### Comment sources & freshness
 
 Most comments are **not** authored through this API — they are posted directly on
-the platform by third parties. These are the primary input, not an edge case. They
-enter our record through the retrieval path: because `GET .../comments` fetches live
-from the platform every time and upserts on `(platform, externalId)`, an externally
-authored comment appears the first time anyone requests that post's comments (and is
-updated, never duplicated, on later fetches). `authorHandle` records who wrote it;
-nothing in the model assumes we authored a comment. Replies we make via `POST` are
-just the subset we happen to author.
+the platform by third parties, and are the primary input rather than an edge case.
+They enter the cache through the retrieval path: because `GET .../comments` fetches
+live and upserts on `(platform, externalId)`, an externally authored comment appears
+the first time its post is requested (and updates, never duplicates, on later
+fetches). `authorHandle` records who wrote it; nothing assumes we authored a comment.
 
 The consequence is a **freshness bound, not a correctness gap**: with no push channel
-yet, our record reflects platform state only as of the last `GET`, so comments added
-externally between fetches exist on the platform but not yet in our DB. Closing that
-gap — capturing external comments as they happen rather than on-demand — is the
-deferred webhooks / real-time sync task.
+yet, the cache reflects platform state only as of the last `GET`. Closing that gap —
+capturing external comments as they happen — is the deferred webhooks / real-time
+sync task.
 
 - **`Platform`** enum: `FACEBOOK`, `TWITTER`, `INSTAGRAM`, `LINKEDIN` (extendable).
 - **`Post`**: `id`, `platform`, `externalId`, `publishedAt`, timestamps. Unique on
