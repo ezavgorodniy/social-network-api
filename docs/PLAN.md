@@ -15,7 +15,7 @@
 - **Where we are:** the architecture/design stage is complete and pushed (tagged
   `architecture`). The repo contains `README.md`, `CLAUDE.md`, `.gitignore`, this
   `docs/PLAN.md`, `docs/README.md`, and the ADRs under `docs/adrs/` (0001–0009;
-  0010 added during scaffolding). **No
+  0010–0012 added during scaffolding). **No
   implementation code exists yet** — the next stage is building the vertical slice.
 - **Decisions so far:** NestJS + TypeScript, PostgreSQL + Prisma behind a repository
   interface, Adapter/Strategy for platforms (Facebook first, others stubbed),
@@ -269,6 +269,8 @@ docs/
   adrs/0008-testing-and-ci-strategy.md
   adrs/0009-persist-posts-cache-comments.md           posts required; comments cached
   adrs/0010-use-native-fetch-for-outbound-http.md     native fetch; undici/axios/got alternatives
+  adrs/0011-pin-typescript-5x.md                      pin TS 5.x, not the native 7.0 compiler
+  adrs/0012-target-node-22-lts.md                     Node 22 Active LTS runtime target
 ```
 
 ADRs use the Nygard format (Status / Context / Decision / Consequences). They are
@@ -288,7 +290,9 @@ old one). Each lists the alternatives considered and why the proposed option fit
   & CI**, **0009 Persistence scope** (posts required as the anchor; comments
   stored as an optional cache with the platform as source of truth), and
   **0010 Outbound HTTP** (native `fetch` behind the `HttpClient` seam; undici,
-  axios, and got weighed as alternatives).
+  axios, and got weighed as alternatives), **0011 TypeScript version** (pin the
+  5.x line rather than the new native 7.0 compiler, which `typescript-eslint` and
+  Nest 11 do not yet support), and **0012 Runtime** (target Node 22 Active LTS).
 
 ## Documentation deliverables
 
