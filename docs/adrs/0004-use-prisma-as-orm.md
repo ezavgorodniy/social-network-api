@@ -4,6 +4,10 @@
 
 Accepted
 
+> Amended by [ADR 13](0013-adopt-prisma-7-driver-adapter.md): Prisma 7 uses a
+> driver adapter (`@prisma/adapter-pg`) instead of a native query-engine binary,
+> and connection config moves from `schema.prisma` to `prisma.config.ts`.
+
 ## Context
 
 We need to talk to PostgreSQL (see
