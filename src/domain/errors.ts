@@ -24,6 +24,16 @@ export abstract class DomainError extends Error {
   }
 }
 
+/** The caller did not supply a platform token (`X-Platform-Token`) on the request. */
+export class MissingPlatformTokenError extends DomainError {
+  readonly code = 'MISSING_PLATFORM_TOKEN';
+  readonly httpStatus = HttpStatus.UNAUTHORIZED;
+
+  constructor() {
+    super('Missing required X-Platform-Token header');
+  }
+}
+
 /** The requested post is not known to this system, so its comments cannot resolve. */
 export class PostNotFoundError extends DomainError {
   readonly code = 'POST_NOT_FOUND';

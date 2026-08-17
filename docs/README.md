@@ -182,7 +182,9 @@ This iteration uses a **pass-through / bring-your-own-token (BYOT)** model
 
 - The caller supplies the platform access token on each request via the dedicated
   **`X-Platform-Token`** header. The service forwards it to the platform as
-  `Authorization: Bearer <token>` and **never persists or logs it**.
+  `Authorization: Bearer <token>` and **never persists or logs it**. Like all HTTP
+  headers, the header name is **case-insensitive** (`X-Platform-Token`,
+  `x-platform-token`, etc. are equivalent); the value is used verbatim (trimmed).
 - A dedicated header is used **instead of `Authorization`** so that adding
   authentication on our own API later does not conflict with the downstream
   platform token.
