@@ -12,20 +12,23 @@
 
 ## Current state
 
-- **Where we are:** the architecture/design stage is complete and pushed (tagged
-  `architecture`). The repo contains `README.md`, `CLAUDE.md`, `.gitignore`, this
-  `docs/PLAN.md`, `docs/README.md`, and the ADRs under `docs/adrs/` (0001–0009;
-  0010–0012 added during scaffolding). **No
-  implementation code exists yet** — the next stage is building the vertical slice.
-- **Decisions so far:** NestJS + TypeScript, PostgreSQL + Prisma behind a repository
-  interface, Adapter/Strategy for platforms (Facebook first, others stubbed),
-  pass-through (BYOT) auth via `X-Platform-Token` behind a `TokenProvider`
-  abstraction, persistence scoped so posts are the required anchor and comments a
-  cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual live smoke test.
-  All captured as ADRs, still authored as `Status: Proposed`.
-- **Next step:** execute TODO step 2 — the project scaffold (`package.json`,
-  `tsconfig.json`, `nest-cli.json`, Jest config with coverage thresholds,
-  `.env.example`, `docker-compose.yml`) — then work down the TODO one step at a time.
+- **Where we are:** implementation is underway. Done so far: docs & ADRs (tagged
+  `architecture`), the project scaffold (TODO step 2 — `package.json`,
+  `tsconfig.json`, `nest-cli.json`, `jest.config.js`, `.env.example`,
+  `docker-compose.yml`), the Prisma schema + initial migration (step 3), and the
+  domain layer (step 4 — `src/domain/{comment,errors,http-status}.ts` with unit
+  tests at 100%). All ADRs 0001–0013 are now `Status: Accepted`. ADR 0013 was added
+  to record the Prisma 7 driver-adapter model (amends ADR 0004): connection config
+  lives in `prisma.config.ts`, not `schema.prisma`.
+- **Decisions so far:** NestJS + TypeScript, PostgreSQL + Prisma (7, driver-adapter
+  model) behind a repository interface, Adapter/Strategy for platforms (Facebook
+  first, others stubbed), pass-through (BYOT) auth via `X-Platform-Token` behind a
+  `TokenProvider` abstraction, persistence scoped so posts are the required anchor
+  and comments a cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual
+  live smoke test. All captured as accepted ADRs.
+- **Next step:** TODO step 5 — the auth module (`TokenProvider` interface +
+  `RequestScopedTokenProvider` reading `X-Platform-Token`) and the `HttpClient`
+  seam (native fetch, ADR 0010) — then work down the TODO one step at a time.
 - **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
   postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
@@ -316,10 +319,12 @@ old one). Each lists the alternatives considered and why the proposed option fit
 1. **Docs & ADRs (BLOCKER) — done.** `docs/README.md` and the ADRs are written
    and pushed (tagged `architecture`). `docs/adding-a-platform.md` is deferred until
    the platforms module exists so it matches real code. This blocker is cleared.
-2. Project scaffold: `package.json`, `tsconfig.json`, `nest-cli.json`,
+2. **Project scaffold — done.** `package.json`, `tsconfig.json`, `nest-cli.json`,
    `jest.config.js` (coverage thresholds), `.env.example`, `docker-compose.yml`.
-3. Prisma schema + initial migration.
-4. Domain types + typed errors.
+3. **Prisma schema + initial migration — done.** Prisma 7 driver-adapter model:
+   connection config in `prisma.config.ts` (see ADR 0013), not `schema.prisma`.
+4. **Domain types + typed errors — done.** `src/domain/{comment,errors,http-status}.ts`,
+   unit-tested at 100%.
 5. Auth module: `TokenProvider` interface + `RequestScopedTokenProvider` (reads
    `X-Platform-Token`) and the `HttpClient` seam.
 6. Platforms module: `PlatformAdapter` interface + registry, Facebook adapter, stubs.
