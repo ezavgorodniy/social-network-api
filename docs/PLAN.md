@@ -25,8 +25,12 @@
   response mappers, and a shared `ZodValidationPipe` in `src/common`), and the
   common layer + bootstrap (step 9 — `AllExceptionsFilter` rendering the shared
   error envelope and logging only unexpected errors, `app.module.ts`, and
-  `main.ts` mounting routes under `/api/v1`). All unit-tested at 100% coverage
-  (`main.ts` is the one documented `istanbul ignore` per ADR 0008).
+  `main.ts` mounting routes under `/api/v1`), and the integration + e2e test
+  suites (step 10 — `PrismaCommentRepository` against a real PostgreSQL via the
+  shared contract, and `supertest` against the booted app with the outbound
+  `HttpClient` mocked). All unit + e2e tested at 100% coverage (`main.ts` is the
+  one documented `istanbul ignore` per ADR 0008). The integration suite requires a
+  reachable database (`docker compose up -d db`) and fails loudly if absent.
   All ADRs 0001–0014 are now `Status: Accepted`. ADR 0013 records the Prisma 7
   driver-adapter model (amends ADR 0004): connection config lives in
   `prisma.config.ts`, not `schema.prisma`. ADR 0014 records read-through pagination
@@ -38,10 +42,11 @@
   `TokenProvider` abstraction, persistence scoped so posts are the required anchor
   and comments a cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual
   live smoke test. All captured as accepted ADRs.
-- **Next step:** TODO step 10 — tests: add the integration suite running
-  `PrismaCommentRepository` against a real PostgreSQL container (via the shared
-  contract), and the e2e suite (`supertest` against the app with in-memory repo +
-  mocked adapter) asserting HTTP status/envelope shapes — meeting the 95%+ gate.
+- **Next step:** TODO step 11 — the live smoke test app (`scripts/live-smoke`): a
+  standalone Node entry point that builds the real `FacebookAdapter` (real
+  `HttpClient`, static `TokenProvider` seeded from `--token`), fetches → replies →
+  re-fetches against the real Graph API, and cleans up created resources (default
+  `--cleanup=true`). Run manually with a real token; never in CI.
 - **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
   postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
@@ -348,7 +353,8 @@ old one). Each lists the alternatives considered and why the proposed option fit
    DTOs/validation and a shared `ZodValidationPipe` (`src/common`).
 9. **Common — done.** `AllExceptionsFilter` (error envelope + logs unexpected
    errors only) + Nest bootstrap (`app.module.ts`, `main.ts`, `/api/v1` prefix).
-10. Tests: unit, integration (Docker Postgres), e2e — meet 95%+ coverage.
+10. **Tests — done.** Unit (100%), integration against real Postgres via the
+    shared contract, and e2e (`supertest`, mocked `HttpClient`) — 95%+ gate met.
 11. Live smoke test app (`scripts/live-smoke`) with token param + cleanup.
 12. CI workflow `.github/workflows/ci.yml`.
 13. Verify locally (install, generate, migrate, test, dev curl) then finalize.

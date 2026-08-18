@@ -38,6 +38,9 @@ module.exports = {
       ...tsPreset,
       displayName: 'integration',
       testMatch: ['<rootDir>/tests/integration/**/*.int.test.ts'],
+      // Integration tests hit a real database; load DATABASE_URL from .env the
+      // same way prisma.config.ts does (jest does not read .env on its own).
+      setupFiles: ['dotenv/config'],
     },
     {
       ...tsPreset,
