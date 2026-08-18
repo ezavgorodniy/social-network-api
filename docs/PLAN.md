@@ -15,20 +15,27 @@
 - **Where we are:** implementation is underway. Done so far: docs & ADRs (tagged
   `architecture`), the project scaffold (TODO step 2 — `package.json`,
   `tsconfig.json`, `nest-cli.json`, `jest.config.js`, `.env.example`,
-  `docker-compose.yml`), the Prisma schema + initial migration (step 3), and the
-  domain layer (step 4 — `src/domain/{comment,errors,http-status}.ts` with unit
-  tests at 100%). All ADRs 0001–0013 are now `Status: Accepted`. ADR 0013 was added
-  to record the Prisma 7 driver-adapter model (amends ADR 0004): connection config
-  lives in `prisma.config.ts`, not `schema.prisma`.
+  `docker-compose.yml`), the Prisma schema + initial migration (step 3), the
+  domain layer (step 4 — `src/domain/{comment,errors,http-status}.ts`), the auth
+  module + `HttpClient` seam (step 5), the platforms module (step 6 — adapter
+  contract, registry, Facebook adapter, stubs), and the repository layer (step 7 —
+  `CommentRepository` contract, `PrismaService` + Prisma implementation, in-memory
+  implementation, and a shared contract suite). All unit-tested at 100% coverage.
+  All ADRs 0001–0014 are now `Status: Accepted`. ADR 0013 records the Prisma 7
+  driver-adapter model (amends ADR 0004): connection config lives in
+  `prisma.config.ts`, not `schema.prisma`. ADR 0014 records read-through pagination
+  (amends ADR 0005): the platform owns paging, so the repository carries no cursor
+  logic.
 - **Decisions so far:** NestJS + TypeScript, PostgreSQL + Prisma (7, driver-adapter
   model) behind a repository interface, Adapter/Strategy for platforms (Facebook
   first, others stubbed), pass-through (BYOT) auth via `X-Platform-Token` behind a
   `TokenProvider` abstraction, persistence scoped so posts are the required anchor
   and comments a cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual
   live smoke test. All captured as accepted ADRs.
-- **Next step:** TODO step 5 — the auth module (`TokenProvider` interface +
-  `RequestScopedTokenProvider` reading `X-Platform-Token`) and the `HttpClient`
-  seam (native fetch, ADR 0010) — then work down the TODO one step at a time.
+- **Next step:** TODO step 8 — the comments module: `CommentService` (use cases
+  orchestrating the repository + platform adapters), the Nest controller (routes),
+  and the request/response DTOs with `zod` validation — then work down the TODO one
+  step at a time.
 - **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
   postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
@@ -325,10 +332,12 @@ old one). Each lists the alternatives considered and why the proposed option fit
    connection config in `prisma.config.ts` (see ADR 0013), not `schema.prisma`.
 4. **Domain types + typed errors — done.** `src/domain/{comment,errors,http-status}.ts`,
    unit-tested at 100%.
-5. Auth module: `TokenProvider` interface + `RequestScopedTokenProvider` (reads
-   `X-Platform-Token`) and the `HttpClient` seam.
-6. Platforms module: `PlatformAdapter` interface + registry, Facebook adapter, stubs.
-7. Repository layer: interface + injection token, Prisma impl, in-memory impl.
+5. **Auth module — done.** `TokenProvider` interface + `RequestScopedTokenProvider`
+   (reads `X-Platform-Token`) and the `HttpClient` seam (native fetch, ADR 0010).
+6. **Platforms module — done.** `PlatformAdapter` interface + registry, Facebook
+   adapter, not-implemented stubs.
+7. **Repository layer — done.** `CommentRepository` interface + injection token,
+   `PrismaService` + Prisma impl, in-memory impl, shared contract suite.
 8. Comments module: service (use cases) + controller + DTOs/validation.
 9. Common: exception filter (error envelope) + Nest bootstrap (`main.ts`).
 10. Tests: unit, integration (Docker Postgres), e2e — meet 95%+ coverage.
