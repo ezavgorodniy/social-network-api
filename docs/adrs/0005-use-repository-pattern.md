@@ -4,6 +4,11 @@
 
 Accepted
 
+> Amended by [ADR 14](0014-read-through-pagination.md): under read-through
+> pagination the platform owns paging, so the `CommentRepository` carries no
+> cursor logic and the two implementations mirror ordering and idempotent upsert
+> but *not* a cursor scheme.
+
 ## Context
 
 The service layer needs to read and persist posts and comments. The naive
