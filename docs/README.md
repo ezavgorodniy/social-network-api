@@ -175,6 +175,25 @@ All errors share one shape:
 { "error": { "code": "NOT_FOUND", "message": "Post not found" } }
 ```
 
+A single global `AllExceptionsFilter` produces this envelope for every failure.
+Typed `DomainError`s carry a stable `code` and HTTP status (e.g.
+`POST_NOT_FOUND`/404, `PLATFORM_NOT_IMPLEMENTED`/501, `UPSTREAM_PLATFORM_ERROR`/502,
+`INVALID_REQUEST`/400, `MISSING_PLATFORM_TOKEN`/401). Any unexpected error becomes
+a generic `500 { "code": "INTERNAL_ERROR", "message": "Internal server error" }`
+so internals never leak to the client.
+
+### Logging
+
+Unexpected (non-domain) errors are logged server-side via Nest's `Logger` with
+their stack, so 500s can be diagnosed while the client still receives only the
+generic body. Expected domain/validation errors are normal client outcomes and
+are not logged as errors. The request — and therefore the `X-Platform-Token`
+header — is never logged (see [ADR 7](adrs/0007-authenticate-with-oauth2-bearer-token.md)).
+
+> **TODO (deferred):** structured logging, request-scoped correlation ids,
+> metrics, and tracing across the HTTP boundary are out of scope for this
+> iteration — see the observability item in the future-tasks backlog.
+
 ## Authentication
 
 This iteration uses a **pass-through / bring-your-own-token (BYOT)** model

@@ -22,8 +22,11 @@
   `CommentRepository` contract, `PrismaService` + Prisma implementation, in-memory
   implementation, and a shared contract suite), and the comments module (step 8 —
   `CommentService` use cases, the controller with both routes, zod request DTOs +
-  response mappers, and a shared `ZodValidationPipe` in `src/common`). All
-  unit-tested at 100% coverage.
+  response mappers, and a shared `ZodValidationPipe` in `src/common`), and the
+  common layer + bootstrap (step 9 — `AllExceptionsFilter` rendering the shared
+  error envelope and logging only unexpected errors, `app.module.ts`, and
+  `main.ts` mounting routes under `/api/v1`). All unit-tested at 100% coverage
+  (`main.ts` is the one documented `istanbul ignore` per ADR 0008).
   All ADRs 0001–0014 are now `Status: Accepted`. ADR 0013 records the Prisma 7
   driver-adapter model (amends ADR 0004): connection config lives in
   `prisma.config.ts`, not `schema.prisma`. ADR 0014 records read-through pagination
@@ -35,10 +38,10 @@
   `TokenProvider` abstraction, persistence scoped so posts are the required anchor
   and comments a cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual
   live smoke test. All captured as accepted ADRs.
-- **Next step:** TODO step 9 — common: the exception filter that maps typed
-  `DomainError`s to the shared envelope `{ "error": { "code", "message" } }`, and
-  the Nest bootstrap (`main.ts`, `app.module.ts`, `/api/v1` global prefix) — then
-  work down the TODO one step at a time.
+- **Next step:** TODO step 10 — tests: add the integration suite running
+  `PrismaCommentRepository` against a real PostgreSQL container (via the shared
+  contract), and the e2e suite (`supertest` against the app with in-memory repo +
+  mocked adapter) asserting HTTP status/envelope shapes — meeting the 95%+ gate.
 - **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
   postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
@@ -343,7 +346,8 @@ old one). Each lists the alternatives considered and why the proposed option fit
    `PrismaService` + Prisma impl, in-memory impl, shared contract suite.
 8. **Comments module — done.** `CommentService` (use cases) + controller + zod
    DTOs/validation and a shared `ZodValidationPipe` (`src/common`).
-9. Common: exception filter (error envelope) + Nest bootstrap (`main.ts`).
+9. **Common — done.** `AllExceptionsFilter` (error envelope + logs unexpected
+   errors only) + Nest bootstrap (`app.module.ts`, `main.ts`, `/api/v1` prefix).
 10. Tests: unit, integration (Docker Postgres), e2e — meet 95%+ coverage.
 11. Live smoke test app (`scripts/live-smoke`) with token param + cleanup.
 12. CI workflow `.github/workflows/ci.yml`.
