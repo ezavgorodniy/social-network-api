@@ -20,7 +20,10 @@
   module + `HttpClient` seam (step 5), the platforms module (step 6 — adapter
   contract, registry, Facebook adapter, stubs), and the repository layer (step 7 —
   `CommentRepository` contract, `PrismaService` + Prisma implementation, in-memory
-  implementation, and a shared contract suite). All unit-tested at 100% coverage.
+  implementation, and a shared contract suite), and the comments module (step 8 —
+  `CommentService` use cases, the controller with both routes, zod request DTOs +
+  response mappers, and a shared `ZodValidationPipe` in `src/common`). All
+  unit-tested at 100% coverage.
   All ADRs 0001–0014 are now `Status: Accepted`. ADR 0013 records the Prisma 7
   driver-adapter model (amends ADR 0004): connection config lives in
   `prisma.config.ts`, not `schema.prisma`. ADR 0014 records read-through pagination
@@ -32,10 +35,10 @@
   `TokenProvider` abstraction, persistence scoped so posts are the required anchor
   and comments a cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual
   live smoke test. All captured as accepted ADRs.
-- **Next step:** TODO step 8 — the comments module: `CommentService` (use cases
-  orchestrating the repository + platform adapters), the Nest controller (routes),
-  and the request/response DTOs with `zod` validation — then work down the TODO one
-  step at a time.
+- **Next step:** TODO step 9 — common: the exception filter that maps typed
+  `DomainError`s to the shared envelope `{ "error": { "code", "message" } }`, and
+  the Nest bootstrap (`main.ts`, `app.module.ts`, `/api/v1` global prefix) — then
+  work down the TODO one step at a time.
 - **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
   postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
@@ -338,7 +341,8 @@ old one). Each lists the alternatives considered and why the proposed option fit
    adapter, not-implemented stubs.
 7. **Repository layer — done.** `CommentRepository` interface + injection token,
    `PrismaService` + Prisma impl, in-memory impl, shared contract suite.
-8. Comments module: service (use cases) + controller + DTOs/validation.
+8. **Comments module — done.** `CommentService` (use cases) + controller + zod
+   DTOs/validation and a shared `ZodValidationPipe` (`src/common`).
 9. Common: exception filter (error envelope) + Nest bootstrap (`main.ts`).
 10. Tests: unit, integration (Docker Postgres), e2e — meet 95%+ coverage.
 11. Live smoke test app (`scripts/live-smoke`) with token param + cleanup.

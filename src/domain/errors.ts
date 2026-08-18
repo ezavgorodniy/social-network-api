@@ -24,6 +24,16 @@ export abstract class DomainError extends Error {
   }
 }
 
+/** The request failed validation at the HTTP boundary (bad query or body). */
+export class InvalidRequestError extends DomainError {
+  readonly code = 'INVALID_REQUEST';
+  readonly httpStatus = HttpStatus.BAD_REQUEST;
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 /** The caller did not supply a platform token (`X-Platform-Token`) on the request. */
 export class MissingPlatformTokenError extends DomainError {
   readonly code = 'MISSING_PLATFORM_TOKEN';

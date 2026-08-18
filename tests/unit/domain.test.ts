@@ -2,6 +2,7 @@ import { isPlatform, PLATFORMS } from '@app/domain/comment';
 import {
   CommentNotFoundError,
   DomainError,
+  InvalidRequestError,
   PlatformNotImplementedError,
   PostNotFoundError,
   UpstreamPlatformError,
@@ -23,6 +24,13 @@ describe('isPlatform', () => {
 
 describe('domain errors', () => {
   const cases = [
+    {
+      name: 'InvalidRequestError',
+      error: new InvalidRequestError('limit must be a positive integer'),
+      code: 'INVALID_REQUEST',
+      httpStatus: HttpStatus.BAD_REQUEST,
+      message: 'limit must be a positive integer',
+    },
     {
       name: 'PostNotFoundError',
       error: new PostNotFoundError('post-1'),
