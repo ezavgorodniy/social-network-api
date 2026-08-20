@@ -33,7 +33,10 @@ npm run prisma:migrate      # apply the schema
 npm run start:dev           # start the API
 ```
 
-## Testing
+## Contributing
+
+Full setup, the test suites, and the Facebook token / live-smoke-test walkthrough
+are in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ```bash
 npm test                    # unit + integration + e2e

@@ -215,62 +215,7 @@ This iteration uses a **pass-through / bring-your-own-token (BYOT)** model
 Server-side token storage (vault) and full OAuth2 login/refresh are out of scope
 for this iteration and captured as future tasks.
 
-## Running locally
+## Running, testing, and the live smoke test
 
-Prerequisites: Node.js, Docker (for PostgreSQL).
-
-```bash
-npm ci
-cp .env.example .env                 # then fill in the values
-docker compose up -d db              # start local PostgreSQL
-npm run prisma:migrate               # apply migrations
-npm run start:dev                    # start the API in watch mode
-```
-
-Example requests (replace the token and IDs):
-
-```bash
-# Retrieve comments for a post
-curl -H "X-Platform-Token: <ACCESS_TOKEN>" \
-  http://localhost:3000/api/v1/posts/<POST_ID>/comments
-
-# Reply to a comment
-curl -X POST \
-  -H "X-Platform-Token: <ACCESS_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Thanks for the feedback!"}' \
-  http://localhost:3000/api/v1/comments/<COMMENT_ID>/replies
-```
-
-## Testing
-
-See [ADR 8](adrs/0008-testing-and-ci-strategy.md) for the full strategy.
-
-```bash
-npm test                 # unit + integration + e2e, with the 95% coverage gate
-```
-
-- **Unit** tests run against the in-memory repository and a mocked `HttpClient` — no
-  database, no network.
-- **Integration** tests run `PrismaCommentRepository` against the Dockerized
-  PostgreSQL (start it with `docker compose up -d db` first).
-- **E2E** tests drive the Nest app with `supertest`.
-
-CI (GitHub Actions) runs the same suite on push/PR with a PostgreSQL service
-container and enforces the coverage gate. Security scanning, image publishing, and
-deployment are out of CI scope for this iteration.
-
-## Live smoke test
-
-A standalone Node application that exercises the **real Facebook Graph API** with a
-real token. Run it manually — never in CI.
-
-```bash
-npm run smoke -- --token <ACCESS_TOKEN> --post-id <POST_ID> [--cleanup=false]
-```
-
-It fetches comments for the post, posts a reply, and re-fetches to confirm the reply
-appears. Every resource it creates is deleted afterwards (cleanup defaults to `true`
-and runs even on failure); pass `--cleanup=false` to leave them for inspection. The
-token is passed as a CLI parameter (falling back to `FACEBOOK_ACCESS_TOKEN`) and is
-never logged. Exit code is `0` on success, non-zero on any failure.
+Developer-facing setup — running locally, the test suites, and the full Facebook
+token / smoke-test walkthrough — lives in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
