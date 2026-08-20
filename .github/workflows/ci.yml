@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Out of scope for this iteration (tracked in docs/PLAN.md "Future tasks"):
+# security scanning (SAST + dependency), container image build/publish, and
+# deployment. This workflow only builds, type-checks, and tests.
+
+jobs:
+  test:
+    name: Type-check and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Match the local docker-compose major (Postgres 18) so CI and local
+        # behave the same.
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: social_network
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d social_network"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://app:app@localhost:5432/social_network?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Apply database migrations
+        run: npm run prisma:deploy
+
+      - name: Run tests with coverage (95% gate)
+        run: npm run test:cov
