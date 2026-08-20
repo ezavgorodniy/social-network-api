@@ -10,7 +10,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"{src,tests,scripts}/**/*.ts\"",
+    "lint": "eslint \"{src,tests,scripts,prisma}/**/*.ts\"",
     "test": "jest",
     "test:unit": "jest --selectProjects unit",
     "test:integration": "jest --selectProjects integration",
@@ -19,6 +19,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "seed": "ts-node prisma/seed.ts",
     "smoke": "ts-node scripts/live-smoke/index.ts"
   },
   "dependencies": {

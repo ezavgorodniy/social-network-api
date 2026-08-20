@@ -29,7 +29,7 @@
       "@app/*": ["src/*"]
     }
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "prisma/**/*.ts"],
   "exclude": ["node_modules", "dist"],
   "ts-node": {
     // Resolve the "@app/*" path alias at runtime (the smoke script and the src

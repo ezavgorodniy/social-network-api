@@ -13,23 +13,100 @@ npm ci
 cp .env.example .env                 # then fill in the values
 docker compose up -d db              # start local PostgreSQL
 npm run prisma:migrate               # apply migrations
-npm run start:dev                    # start the API in watch mode
+npm run start:dev                    # start the API in watch mode (port 3000)
 ```
 
-Example requests (replace the token and IDs):
+## Trying the API end-to-end
+
+This slice has **no "publish a post" endpoint** — posts are assumed to be created by
+the wider scheduling product (see [ADR 9](docs/adrs/0009-persist-posts-cache-comments.md)).
+So `GET /posts/:postId/comments` needs a `Post` row to exist first, keyed by *our*
+internal id. Without one, every request 404s. The seed script creates that anchor.
+
+### 1. Seed a post
 
 ```bash
-# Retrieve comments for a post
-curl -H "X-Platform-Token: <ACCESS_TOKEN>" \
-  http://localhost:3000/api/v1/posts/<POST_ID>/comments
+# Point the seed at a real Facebook post ({page-id}_{post-id}) you administer, so
+# the live GET has something to fetch. Omitting it uses a placeholder externalId.
+SEED_POST_EXTERNAL_ID=<PAGE_ID>_<POST_ID> npm run seed
+# -> Seeded Post id=post_test_1 platform=FACEBOOK externalId=<PAGE_ID>_<POST_ID>
+```
 
-# Reply to a comment
-curl -X POST \
-  -H "X-Platform-Token: <ACCESS_TOKEN>" \
+`post_test_1` is now your `:postId`. (See "Getting a Facebook token" below for how to
+obtain a Page token and post id.)
+
+### 2. Retrieve comments (fetches live from the platform, caches, returns)
+
+```bash
+TOKEN='<PAGE_ACCESS_TOKEN>'    # quote it; Facebook tokens contain no spaces but this avoids paste mishaps
+
+curl -s -H "X-Platform-Token: $TOKEN" \
+  http://localhost:3000/api/v1/posts/post_test_1/comments | jq
+```
+
+Expected `200`:
+
+```json
+{
+  "data": [
+    { "id": "<COMMENT_ID>", "postId": "post_test_1", "platform": "FACEBOOK",
+      "externalId": "..._...", "authorHandle": "Some Author", "content": "Pong",
+      "parentCommentId": null, "createdAt": "…", "syncedAt": "…" }
+  ],
+  "nextCursor": null
+}
+```
+
+The `id` here is **our** internal comment id — copy one and use it as `<COMMENT_ID>`
+below. `nextCursor` is the platform's opaque next-page cursor (`null` when there are
+no more pages); pass it back as `?cursor=<value>`.
+
+### 3. Reply to a comment (real Graph API call, then persisted)
+
+```bash
+curl -s -X POST \
+  -H "X-Platform-Token: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"content":"Thanks for the feedback!"}' \
-  http://localhost:3000/api/v1/comments/<COMMENT_ID>/replies
+  http://localhost:3000/api/v1/comments/<COMMENT_ID>/replies | jq
 ```
+
+Expected `201` with the created reply (`parentCommentId` points at the comment you
+replied to). This **actually posts to the platform** — delete the reply from the Page
+afterwards if you don't want it to linger.
+
+### 4. Error paths (no setup needed)
+
+```bash
+# 404 POST_NOT_FOUND — unknown post id
+curl -i -H "X-Platform-Token: $TOKEN" http://localhost:3000/api/v1/posts/does-not-exist/comments
+
+# 401 MISSING_PLATFORM_TOKEN — no X-Platform-Token header
+curl -i http://localhost:3000/api/v1/posts/post_test_1/comments
+
+# 400 INVALID_REQUEST — empty/invalid body
+curl -i -X POST -H "X-Platform-Token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{}' http://localhost:3000/api/v1/comments/<COMMENT_ID>/replies
+```
+
+All errors share the envelope `{ "error": { "code": "...", "message": "..." } }`.
+
+### No Facebook at all?
+
+`npm run test:e2e` drives both endpoints end-to-end with the HTTP boundary mocked —
+zero setup, no real token, no network.
+
+### Troubleshooting
+
+| Symptom | Likely cause / fix |
+| --- | --- |
+| Empty output from `curl -s`, no error | A **line break inside the quoted header** splits the command — the shell runs a broken request and `-s` hides it. Put the token in a variable (`TOKEN='...'`) and keep the whole `-H` on one line. Drop `-s` (or add `-i`) while debugging to see the real response. |
+| `401 MISSING_PLATFORM_TOKEN` | The `X-Platform-Token` header didn't arrive (missing, misspelled, or mangled by a paste). Verify with `curl -i` that the header is present. |
+| `401`/`502 UPSTREAM_PLATFORM_ERROR` on GET | Token expired or lacks scope, or the post's `externalId` isn't real. Test the token directly: `curl "https://graph.facebook.com/v21.0/me?access_token=$TOKEN"`. |
+| `404 POST_NOT_FOUND` | No `Post` row for that `:postId`. Run `npm run seed` (step 1) and use the printed id (`post_test_1`). |
+| `404 COMMENT_NOT_FOUND` on reply | The `:commentId` is a Facebook external id, not **our** internal id. Use an `id` from a prior GET response (step 2). |
+| `jq: command not found` | Install jq, or drop `| jq` — the API returns plain JSON regardless. |
+| `DATABASE_URL must be set…` from seed | `.env` missing or not loaded. `cp .env.example .env` and ensure `DATABASE_URL` is set. |
 
 ## Testing
 
