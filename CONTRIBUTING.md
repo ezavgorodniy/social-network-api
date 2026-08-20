@@ -58,11 +58,15 @@ real token. Run it manually — never in CI.
 npm run smoke -- --token <ACCESS_TOKEN> --post-id <POST_ID> [--cleanup=false]
 ```
 
-It fetches comments for the post, posts a reply, and re-fetches to confirm the reply
-appears. Every resource it creates is deleted afterwards (cleanup defaults to `true`
-and runs even on failure); pass `--cleanup=false` to leave them for inspection. The
-token is passed as a CLI parameter (falling back to `FACEBOOK_ACCESS_TOKEN`) and is
-never logged. Exit code is `0` on success, non-zero on any failure.
+It runs the happy path — fetch comments, post a reply, re-fetch to confirm the reply
+appears — then a set of **unhappy-path** checks: an invalid token, a nonexistent
+post, and a reply to a nonexistent comment must each surface as an
+`UpstreamPlatformError`. The unhappy-path checks create nothing, so they need no
+cleanup. Every resource the happy path creates is deleted afterwards (cleanup
+defaults to `true` and runs even on failure); pass `--cleanup=false` to leave them
+for inspection. The token is passed as a CLI parameter (falling back to
+`FACEBOOK_ACCESS_TOKEN`) and is never logged. Exit code is `0` on success, non-zero
+on any failure.
 
 ### Getting a Facebook token
 

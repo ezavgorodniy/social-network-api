@@ -8,13 +8,15 @@
 // The token is supplied as a CLI parameter (falling back to FACEBOOK_ACCESS_TOKEN)
 // and is never logged.
 
-// Relative imports (not the @app/* tsconfig alias) so `ts-node` runs this
-// standalone script without a path-resolution shim.
-import { FetchHttpClient } from '../../src/http-client/fetch-http-client';
-import type { HttpClient } from '../../src/http-client/http-client';
-import type { TokenProvider } from '../../src/auth/token-provider';
-import { FacebookAdapter } from '../../src/platforms/facebook-adapter';
-import type { PlatformComment } from '../../src/platforms/platform-adapter';
+// Uses the @app/* alias like the rest of the codebase; the src modules it pulls
+// in resolve that alias internally. The "ts-node" block in tsconfig.json loads
+// tsconfig-paths/register so plain `ts-node` honours the alias at runtime.
+import { FetchHttpClient } from '@app/http-client/fetch-http-client';
+import type { HttpClient } from '@app/http-client/http-client';
+import type { TokenProvider } from '@app/auth/token-provider';
+import { UpstreamPlatformError } from '@app/domain/errors';
+import { FacebookAdapter } from '@app/platforms/facebook-adapter';
+import type { PlatformComment } from '@app/platforms/platform-adapter';
 
 const GRAPH_API_BASE_URL = 'https://graph.facebook.com/v21.0';
 const REPLY_MARKER = 'live-smoke';
@@ -35,6 +37,28 @@ class StaticTokenProvider implements TokenProvider {
 }
 
 class SmokeTestError extends Error {}
+
+/**
+ * Assert that `operation` rejects with an `UpstreamPlatformError` (how the adapter
+ * surfaces a Graph API failure). Passing — i.e. resolving — is the failure here.
+ */
+async function expectUpstreamError(
+  description: string,
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await operation();
+  } catch (error: unknown) {
+    if (error instanceof UpstreamPlatformError) {
+      console.log(`      OK: ${description} → ${error.message}`);
+      return;
+    }
+    throw new SmokeTestError(
+      `${description}: expected UpstreamPlatformError but got ${String(error)}.`,
+    );
+  }
+  throw new SmokeTestError(`${description}: expected a failure but the call succeeded.`);
+}
 
 function parseArgs(argv: readonly string[]): SmokeOptions {
   const values = new Map<string, string>();
@@ -132,9 +156,45 @@ async function run(options: SmokeOptions): Promise<void> {
   }
 }
 
+/**
+ * Exercise failure paths against the real Graph API. These create nothing, so no
+ * cleanup is needed. Each call must surface as an `UpstreamPlatformError`.
+ */
+async function runUnhappyPaths(options: SmokeOptions): Promise<void> {
+  const httpClient: HttpClient = new FetchHttpClient();
+
+  console.log('\n[unhappy paths] Verifying failures surface as UpstreamPlatformError…');
+
+  // 1. An invalid token must be rejected even for a valid post id.
+  const badTokenAdapter = new FacebookAdapter(
+    httpClient,
+    new StaticTokenProvider('invalid-token'),
+  );
+  await expectUpstreamError('invalid token on fetchComments', () =>
+    badTokenAdapter.fetchComments(options.postId, { limit: 5 }),
+  );
+
+  // 2. A well-formed but nonexistent post id must fail (valid token).
+  const validAdapter = new FacebookAdapter(
+    httpClient,
+    new StaticTokenProvider(options.token),
+  );
+  await expectUpstreamError('nonexistent post on fetchComments', () =>
+    validAdapter.fetchComments('000000000000000_000000000000000', { limit: 5 }),
+  );
+
+  // 3. Replying to a nonexistent comment id must fail (valid token).
+  await expectUpstreamError('nonexistent comment on postReply', () =>
+    validAdapter.postReply('000000000000000_000000000000000', `${REPLY_MARKER} should-fail`),
+  );
+
+  console.log('      All unhappy paths behaved as expected.');
+}
+
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   await run(options);
+  await runUnhappyPaths(options);
   console.log('\nLive smoke test PASSED.');
 }
 
