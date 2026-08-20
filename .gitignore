@@ -34,6 +34,13 @@ coverage/
 .parcel-cache/
 .npm/
 
+# Local secrets / tokens (never commit)
+.claude/fb-token-gitignore.txt
+.claude/fb-page-token.tmp
+*token*.txt
+*.secret
+*.tmp
+
 # Environment variables
 .env
 .env.local
