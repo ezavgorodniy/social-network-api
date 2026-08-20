@@ -42,11 +42,21 @@
   `TokenProvider` abstraction, persistence scoped so posts are the required anchor
   and comments a cache (ADR 0009), 95%+ coverage, CI with real Postgres, a manual
   live smoke test. All captured as accepted ADRs.
-- **Next step:** TODO step 11 — the live smoke test app (`scripts/live-smoke`): a
+- **Next step:** steps 1–11 are done. Two required steps remain before this is
+  "done": **step 12** — the CI workflow (`.github/workflows/ci.yml`, now added:
+  Postgres 18 service container, `npm ci`, `prisma generate`, `tsc --noEmit`,
+  `prisma migrate deploy`, then the full unit+integration+e2e suite with the 95%
+  coverage gate) — and **step 13** — a local verification pass. Only the stubbed
+  non-Facebook platforms and CI/CD *hardening* (SAST, image publish, deploy) are
+  backlog (see "Future tasks"). Step 11 — the live smoke test app
+  (`scripts/live-smoke/index.ts`) — is complete: a
   standalone Node entry point that builds the real `FacebookAdapter` (real
   `HttpClient`, static `TokenProvider` seeded from `--token`), fetches → replies →
   re-fetches against the real Graph API, and cleans up created resources (default
-  `--cleanup=true`). Run manually with a real token; never in CI.
+  `--cleanup=true`; `finally` block also cleans up on failure). Verified end-to-end
+  against a real test Page: happy path (both cleanup modes) and failure paths (bad
+  post id, missing token → exit 1). Run manually with a real Page Access Token;
+  never in CI.
 - **Deferred within the docs stage:** `docs/adding-a-platform.md` is intentionally
   postponed until the platforms module exists, so the guide matches real code.
 - **How this section is maintained:** updated as we progress so it always
@@ -355,8 +365,14 @@ old one). Each lists the alternatives considered and why the proposed option fit
    errors only) + Nest bootstrap (`app.module.ts`, `main.ts`, `/api/v1` prefix).
 10. **Tests — done.** Unit (100%), integration against real Postgres via the
     shared contract, and e2e (`supertest`, mocked `HttpClient`) — 95%+ gate met.
-11. Live smoke test app (`scripts/live-smoke`) with token param + cleanup.
-12. CI workflow `.github/workflows/ci.yml`.
+11. **Live smoke test — done.** `scripts/live-smoke/index.ts`: real `FacebookAdapter`
+    against the Graph API with a `--token`/`--post-id` CLI (falls back to
+    `FACEBOOK_ACCESS_TOKEN`), `--cleanup` default `true` with `finally` cleanup.
+    Verified end-to-end against a real test Page.
+12. **CI workflow — done.** `.github/workflows/ci.yml`: Postgres 18 service
+    container, `npm ci`, `prisma generate`, `tsc --noEmit`, `prisma migrate deploy`,
+    then unit+integration+e2e with the 95% coverage gate. SAST/deps scanning, image
+    publish, and deploy are explicitly out of scope (backlog), noted in the workflow.
 13. Verify locally (install, generate, migrate, test, dev curl) then finalize.
 
 Progress will be tracked in the session task list mirroring these steps.
